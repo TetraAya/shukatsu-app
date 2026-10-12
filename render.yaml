@@ -1,0 +1,25 @@
+databases:
+  - name: shukatsu-db
+    plan: free
+    databaseName: shukatsu
+    user: shukatsu
+
+services:
+  - type: web
+    name: shukatsu-schedule
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/meta
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: shukatsu-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
