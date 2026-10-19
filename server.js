@@ -281,10 +281,14 @@ async function callOpenAI(userId, messages) {
     throw err;
   }
   const apiKey = decrypt(rows[0].openai_key_enc);
+  const model = rows[0].openai_model || 'gpt-4o-mini';
+  const payload = { model, messages };
+  // gpt-5系・oシリーズなどの推論モデルは temperature の指定を受け付けないため、gpt-4系のみ指定する
+  if (/^gpt-4/.test(model)) payload.temperature = 0.6;
   const r = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: rows[0].openai_model || 'gpt-4o-mini', messages, temperature: 0.6 }),
+    body: JSON.stringify(payload),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
