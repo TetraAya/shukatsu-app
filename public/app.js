@@ -431,7 +431,10 @@ async function pageSettings() {
       <form id="key-form">
         <label>APIキー${user.hasKey ? '（変更する場合のみ入力）' : ''}
           <input id="k-key" type="password" autocomplete="off" placeholder="sk-..."></label>
-        <label>モデル<select id="k-model">${options(['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'], user.model)}</select></label>
+        <label>モデル名（候補から選ぶか、使いたいモデル名を直接入力）
+          <input id="k-model" list="model-list" value="${esc(user.model || 'gpt-4o-mini')}" autocomplete="off" required>
+          <datalist id="model-list">${['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-5-mini', 'gpt-5'].map((m) => `<option value="${m}">`).join('')}</datalist>
+        </label>
         <div class="row"><button class="btn primary inline" type="submit">保存</button>
           ${user.hasKey ? '<button class="btn danger" type="button" id="k-del">キーを削除</button>' : ''}</div>
       </form>
@@ -439,7 +442,7 @@ async function pageSettings() {
   $('#key-form').onsubmit = async (e) => {
     e.preventDefault();
     try {
-      await api('/settings/openai', 'PUT', { apiKey: $('#k-key').value, model: $('#k-model').value });
+      await api('/settings/openai', 'PUT', { apiKey: $('#k-key').value, model: $('#k-model').value.trim() });
       toast('保存しました'); pageSettings();
     } catch (err) { toast(err.message); }
   };
