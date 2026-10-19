@@ -274,35 +274,41 @@ app.get('/api/todo', requireAuth, wrap(async (req, res) => {
 }));
 
 
-// ---------- Gemini連携（OpenAI互換エンドポイント経由） ----------
 
 
-
+// ---------- Gemini連携 ----------
 async function callOpenAI(userId, messages) {
-  const { rows } = await pool.query('SELECT openai_key_enc, openai_model FROM users WHERE id=$1', [userId]);
+  const { rows } = await pool.query('SELECT openai_key_enc FROM users WHERE id=$1', [userId]);
   if (!rows[0] || !rows[0].openai_key_enc) {
-    const err = new Error('OpenAI APIキーが未登録です。設定画面から登録してください。');
+    const err = new Error('APIキーが未登録です。設定画面から登録してください。');
     err.status = 400;
     throw err;
   }
   const apiKey = decrypt(rows[0].openai_key_enc);
-  const model = rows[0].openai_model || 'gpt-4o-mini';
-  const payload = { model, messages };
-  // gpt-5系・oシリーズなどの推論モデルは temperature の指定を受け付けないため、gpt-4系のみ指定する
-  if (/^gpt-4/.test(model)) payload.temperature = 0.6;
-  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+
+  // OpenAI形式の messages 配列をプロンプト文にまとめる
+  const promptText = messages.map(m => `${m.role === 'system' ? '【前提・指示】' : ''}\n${m.content}`).join('\n\n');
+
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: promptText }] }]
+    }),
   });
+
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const err = new Error(`OpenAI APIエラー: ${data.error?.message || r.status}`);
+    const err = new Error(`Gemini APIエラー: ${data.error?.message || r.status}`);
     err.status = r.status === 401 ? 400 : 502;
     throw err;
   }
-  return data.choices?.[0]?.message?.content || '';
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
+
+
+
+ 
 
 
 
