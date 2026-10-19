@@ -117,11 +117,12 @@ app.get('/api/me', wrap(async (req, res) => {
 }));
 
 // ---------- 設定（OpenAI APIキー：ユーザーごと） ----------
+// ---------- 設定（APIキー：ユーザーごと） ----------
 app.put('/api/settings/openai', requireAuth, wrap(async (req, res) => {
   const apiKey = String(req.body.apiKey || '').trim();
-  const model = String(req.body.model || 'gpt-4o-mini').trim().slice(0, 50);
+  const model = String(req.body.model || 'gemini-2.5-flash').trim().slice(0, 50);
   if (apiKey) {
-    if (!/^sk-[A-Za-z0-9_\-]{20,}$/.test(apiKey))
+    if (apiKey.length < 20)
       return res.status(400).json({ error: 'APIキーの形式が正しくありません' });
     await pool.query('UPDATE users SET openai_key_enc = $1, openai_model = $2 WHERE id = $3',
       [encrypt(apiKey), model, req.session.userId]);
@@ -273,26 +274,26 @@ app.get('/api/todo', requireAuth, wrap(async (req, res) => {
 }));
 
 // ---------- ChatGPT連携（ユーザー自身のAPIキーを使用） ----------
+// ---------- Gemini連携（OpenAI互換エンドポイント経由） ----------
 async function callOpenAI(userId, messages) {
   const { rows } = await pool.query('SELECT openai_key_enc, openai_model FROM users WHERE id=$1', [userId]);
   if (!rows[0] || !rows[0].openai_key_enc) {
-    const err = new Error('OpenAI APIキーが未登録です。設定画面から登録してください。');
+    const err = new Error('APIキーが未登録です。設定画面から登録してください。');
     err.status = 400;
     throw err;
   }
   const apiKey = decrypt(rows[0].openai_key_enc);
-  const model = rows[0].openai_model || 'gpt-4o-mini';
+  const model = 'gemini-2.5-flash';
   const payload = { model, messages };
-  // gpt-5系・oシリーズなどの推論モデルは temperature の指定を受け付けないため、gpt-4系のみ指定する
-  if (/^gpt-4/.test(model)) payload.temperature = 0.6;
-  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+  
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(payload),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const err = new Error(`OpenAI APIエラー: ${data.error?.message || r.status}`);
+    const err = new Error(`Gemini APIエラー: ${data.error?.message || r.status}`);
     err.status = r.status === 401 ? 400 : 502;
     throw err;
   }
