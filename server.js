@@ -289,7 +289,7 @@ async function callOpenAI(userId, messages) {
   // OpenAI形式の messages 配列をプロンプト文にまとめる
   const promptText = messages.map(m => `${m.role === 'system' ? '【前提・指示】' : ''}\n${m.content}`).join('\n\n');
 
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
