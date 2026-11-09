@@ -2,9 +2,18 @@
 
 // ---------- 定数 ----------
 const INDUSTRIES = ['IT・通信', 'メーカー', '商社', '金融', 'コンサル', '広告・マスコミ', '小売・流通',
-  '不動産・建設', 'インフラ・エネルギー', '医療・製薬', '公務員・団体', 'その他', '未設定'];
-const INDUSTRY_COLORS = ['#3b5bdb', '#2f9e44', '#e8590c', '#7048e8', '#0c8599', '#d6336c', '#f08c00',
-  '#5c7080', '#1971c2', '#c2255c', '#087f5b', '#868e96', '#adb5bd'];
+  '不動産・建設', 'インフラ・エネルギー', '医療・製薬', '公務員・団体', 'その他'];
+// 業界の色（INDUSTRIES と同じ順番）
+// IT・通信=青 / メーカー=オレンジ / 商社=茶色 / 金融=黒 / コンサル=紫 / 広告・マスコミ=ピンク(薄め)
+// 小売・流通=黄色 / 不動産・建設=黄緑 / インフラ・エネルギー=水色 / 医療・製薬=赤 / 公務員・団体=緑 / その他=グレー
+const INDUSTRY_COLORS = ['#1c5fd4', '#fd7e14', '#8d5524', '#212529', '#9c36b5', '#e599b3',
+  '#fcc419', '#94d82d', '#74c0fc', '#e03131', '#2f9e44', '#868e96'];
+// 背景色が明るい色なら黒文字、暗い色なら白文字にする
+function textOn(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const lum = 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+  return lum > 150 ? '#212529' : '#fff';
+}
 const PRIORITY_COLORS = { '高': '#e03131', '中': '#f08c00', '低': '#4c6ef5' };
 const TYPE_LABEL = { es: 'ES締切', interview: '面接', test: '適性検査' };
 const TYPE_ICON = { es: '📝', interview: '🗣', test: '💻' };
@@ -46,6 +55,7 @@ function colorFor(item) {
   const i = INDUSTRIES.indexOf(item.industry);
   return INDUSTRY_COLORS[i >= 0 ? i : INDUSTRIES.length - 1];
 }
+function industryKey(item) { return INDUSTRIES.includes(item.industry) ? item.industry : 'その他'; }
 function options(list, selected) {
   return list.map((v) => `<option value="${esc(v)}" ${v === selected ? 'selected' : ''}>${esc(v)}</option>`).join('');
 }
@@ -132,7 +142,7 @@ async function openAddEvent(date, fixedCompany) {
         <datalist id="co-list">${state.companies.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
       </label>
       <div class="grid2" id="new-co-fields">
-        <label>業界<select id="ev-industry">${options(INDUSTRIES, '未設定')}</select></label>
+        <label>業界<select id="ev-industry">${options(INDUSTRIES, 'その他')}</select></label>
         <label>志望度<select id="ev-priority">${options(['高', '中', '低'], '中')}</select></label>
       </div>
       <p class="muted" id="new-co-note">※新しい企業名は、業界・志望度とともに自動で登録されます</p>
@@ -181,16 +191,24 @@ async function pageCalendar() {
   for (let i = 0; i < 42; i++) {
     const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
     const key = ymd(d);
-    const chips = (byDay[key] || []).map((e) => `
-      <a class="chip ${e.done ? 'done' : ''}" style="background:${colorFor(e)}" href="#/company/${e.company_id}" data-chip="1"
-         title="${esc(e.company_name)} / ${TYPE_LABEL[e.type]} / ${esc(e.status)}">
-        ${TYPE_ICON[e.type]} ${esc(e.company_name)}<small>${TYPE_LABEL[e.type]}${e.due_time ? ' ' + e.due_time : ''}・${esc(e.status)}</small>
-      </a>`).join('');
+    // 色をそのままベタ塗りにし、明るい色は黒文字・暗い色は白文字に自動で切り替える
+    const chips = (byDay[key] || []).map((e) => {
+      const c = colorFor(e), fg = textOn(c);
+      return `
+      <a class="chip ${e.done ? 'done' : ''}" style="background:${c};color:${fg}" href="#/company/${e.company_id}" data-chip="1"
+         title="${esc(e.company_name)} / ${esc(e.industry)} / ${TYPE_LABEL[e.type]} / ${esc(e.status)}">
+        ${TYPE_ICON[e.type]} ${esc(e.company_name)}<small style="color:${fg};opacity:.85">${TYPE_LABEL[e.type]}${e.due_time ? ' ' + e.due_time : ''}・${esc(e.status)}</small>
+      </a>`;
+    }).join('');
     cells += `<div class="day ${d.getMonth() !== first.getMonth() ? 'other' : ''} ${key === today ? 'today' : ''}" data-date="${key}">
       <span class="num">${d.getDate()}</span>${chips}</div>`;
   }
+  // 凡例は、表示中のカレンダーに実際に出てくる業界だけを表示
+  const usedInd = new Set(events.map(industryKey));
+  const legendInd = INDUSTRIES.map((n, i) => ({ n, c: INDUSTRY_COLORS[i] }))
+    .filter((x) => !usedInd.size || usedInd.has(x.n));
   const legend = state.colorMode === 'industry'
-    ? INDUSTRIES.slice(0, -1).map((n, i) => `<span><i style="background:${INDUSTRY_COLORS[i]}"></i>${n}</span>`).join('')
+    ? legendInd.map((x) => `<span><i style="background:${x.c}"></i>${x.n}</span>`).join('')
     : Object.entries(PRIORITY_COLORS).map(([n, c]) => `<span><i style="background:${c}"></i>志望度 ${n}</span>`).join('');
 
   view().innerHTML = `
@@ -240,7 +258,7 @@ async function pageCompanies() {
     <form id="co-form">
       <label>企業名<input id="c-name" required></label>
       <div class="grid2">
-        <label>業界<select id="c-ind">${options(INDUSTRIES, '未設定')}</select></label>
+        <label>業界<select id="c-ind">${options(INDUSTRIES, 'その他')}</select></label>
         <label>志望度<select id="c-pri">${options(['高', '中', '低'], '中')}</select></label>
       </div>
       <p class="error" id="c-err"></p>
@@ -272,7 +290,7 @@ async function pageCompany(id) {
         <label>企業名<input id="f-name" value="${esc(c.name)}" required></label>
         <div class="grid2">
           <label>選考状況<select id="f-status">${options(STATUSES, c.status)}</select></label>
-          <label>業界<select id="f-ind">${options(INDUSTRIES, c.industry)}</select></label>
+          <label>業界<select id="f-ind">${options(INDUSTRIES, INDUSTRIES.includes(c.industry) ? c.industry : 'その他')}</select></label>
           <label>志望度<select id="f-pri">${options(['高', '中', '低'], c.priority)}</select></label>
           <label>企業URL<input id="f-url" value="${esc(c.url)}" placeholder="https://"></label>
         </div>
@@ -302,7 +320,7 @@ async function pageCompany(id) {
 
     <div class="card">
       <h2>AIで企業研究</h2>
-      <p class="muted">ChatGPT（あなたのAPIキー）を使って、企業研究と志望動機の切り口を整理します。</p>
+      <p class="muted">Gemini（あなたのAPIキー）を使って、企業研究と志望動機の切り口を整理します。</p>
       <label>調べた情報・気になる点（任意。空欄なら上のメモを使用）<textarea id="r-info"></textarea></label>
       <button class="btn primary inline" id="run-research">企業研究を実行</button>
       <div id="research-out">${aiBy.research ? `${when(aiBy.research)}<div class="ai-out">${md(aiBy.research.result)}</div>` : ''}</div>
@@ -359,18 +377,61 @@ async function pageCompany(id) {
 }
 
 // ---------- 項目別リスト ----------
+// ES締切・面接・適性検査は種類で絞り込み、業界別・志望度別・月別は全種類をグループ表示する
+const GROUP_TABS = { industry: '🏢 業界別', priority: '⭐ 志望度別', month: '🗓 月別' };
+const PRIORITY_ORDER = ['高', '中', '低'];
 let listType = 'es', listOnlyOpen = true;
+
+function sortByDate(a, b) {
+  return (a.due_date + (a.due_time || '')).localeCompare(b.due_date + (b.due_time || ''));
+}
+function groupEvents(events, by) {
+  const map = new Map();
+  for (const e of events) {
+    let key;
+    if (by === 'industry') key = industryKey(e);
+    else if (by === 'priority') key = PRIORITY_ORDER.includes(e.priority) ? e.priority : '中';
+    else key = e.due_date.slice(0, 7);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(e);
+  }
+  const order = by === 'industry' ? INDUSTRIES : by === 'priority' ? PRIORITY_ORDER : [...map.keys()].sort();
+  return order.filter((k) => map.has(k)).map((key) => {
+    let label = key, color = '#868e96';
+    if (by === 'industry') color = INDUSTRY_COLORS[INDUSTRIES.indexOf(key)];
+    else if (by === 'priority') { label = `志望度 ${key}`; color = PRIORITY_COLORS[key]; }
+    else { const [y, m] = key.split('-'); label = `${y}年${Number(m)}月`; color = '#4c6ef5'; }
+    return { label, color, items: map.get(key) };
+  });
+}
+function groupHead(g) {
+  return `<div class="grp-head" style="display:flex;align-items:center;gap:8px;margin:18px 0 6px;padding-bottom:6px;border-bottom:2px solid ${g.color};font-weight:700">
+    <i style="width:12px;height:12px;border-radius:3px;background:${g.color};display:inline-block"></i>${esc(g.label)}
+    <span class="muted" style="font-weight:400">${g.items.length}件</span></div>`;
+}
 async function pageList() {
-  const all = await api(`/events?type=${listType}`);
-  const events = listOnlyOpen ? all.filter((e) => !e.done) : all;
+  const isGroup = listType in GROUP_TABS;
+  const all = isGroup
+    ? await api('/events?from=1900-01-01&to=2999-12-31')
+    : await api(`/events?type=${listType}`);
+  const events = (listOnlyOpen ? all.filter((e) => !e.done) : all).sort(sortByDate);
   const today = ymd(new Date());
+  const tabs = [
+    ...Object.entries(TYPE_LABEL).map(([k, v]) => [k, `${TYPE_ICON[k]} ${v}`]),
+    ...Object.entries(GROUP_TABS),
+  ];
+  let body;
+  if (!events.length) body = '<p class="muted">該当する予定はありません。</p>';
+  else if (isGroup) body = groupEvents(events, listType).map((g) => groupHead(g) + g.items.map((e) => itemRow(e, today)).join('')).join('');
+  else body = events.map((e) => itemRow(e, today)).join('');
+
   view().innerHTML = `
     <div class="card">
       <h2>項目別リスト</h2>
-      <div class="tabs" id="tabs">${Object.entries(TYPE_LABEL).map(([k, v]) =>
-        `<button data-t="${k}" class="${k === listType ? 'on' : ''}">${TYPE_ICON[k]} ${v}</button>`).join('')}</div>
+      <div class="tabs" id="tabs" style="flex-wrap:wrap">${tabs.map(([k, label]) =>
+        `<button data-t="${k}" class="${k === listType ? 'on' : ''}">${label}</button>`).join('')}</div>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="only-open" style="width:auto;margin:0" ${listOnlyOpen ? 'checked' : ''}>未完了のみ表示</label>
-      ${events.length ? events.map((e) => itemRow(e, today)).join('') : '<p class="muted">該当する予定はありません。</p>'}
+      ${body}
     </div>`;
   $('#tabs').onclick = (e) => { if (e.target.dataset.t) { listType = e.target.dataset.t; pageList(); } };
   $('#only-open').onchange = (e) => { listOnlyOpen = e.target.checked; pageList(); };
@@ -424,16 +485,17 @@ async function pageSettings() {
   state.user = user;
   view().innerHTML = `
     <div class="card">
-      <h2>ChatGPT（OpenAI）連携</h2>
-      <p class="muted">企業研究・ES添削には、あなた自身のOpenAI APIキーを使います。キーはサーバー側で暗号化して保存され、他のユーザーには使われません。
-        <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">APIキーの発行はこちら</a></p>
+      <h2>Gemini（Google AI）連携</h2>
+      <p class="muted">企業研究・ES添削には、あなた自身のGemini APIキーを使います。キーはサーバー側で暗号化して保存され、他のユーザーには使われません。
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">APIキーの発行はこちら（Google AI Studio）</a></p>
+      <p class="muted">※無料枠では、入力内容がGoogleのサービス改善に使われる場合があります。ESに住所・電話番号などの個人情報を書かないようにしてください。</p>
       <p>状態：${user.hasKey ? '<span class="badge">登録済み</span>' : '<span class="badge warn">未登録</span>'}</p>
       <form id="key-form">
         <label>APIキー${user.hasKey ? '（変更する場合のみ入力）' : ''}
-          <input id="k-key" type="password" autocomplete="off" placeholder="sk-..."></label>
-        <label>モデル名（候補から選ぶか、使いたいモデル名を直接入力）
-          <input id="k-model" list="model-list" value="${esc(user.model || 'gpt-4o-mini')}" autocomplete="off" required>
-          <datalist id="model-list">${['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-5-mini', 'gpt-5'].map((m) => `<option value="${m}">`).join('')}</datalist>
+          <input id="k-key" type="password" autocomplete="off" placeholder="AIza..."></label>
+        <label>モデル名（候補から選ぶか、直接入力）
+          <input id="k-model" list="model-list" value="${esc(user.model || 'gemini-3.8-flash')}" autocomplete="off" required>
+          <datalist id="model-list">${['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'].map((m) => `<option value="${m}">`).join('')}</datalist>
         </label>
         <div class="row"><button class="btn primary inline" type="submit">保存</button>
           ${user.hasKey ? '<button class="btn danger" type="button" id="k-del">キーを削除</button>' : ''}</div>
@@ -442,12 +504,12 @@ async function pageSettings() {
   $('#key-form').onsubmit = async (e) => {
     e.preventDefault();
     try {
-      await api('/settings/openai', 'PUT', { apiKey: $('#k-key').value, model: $('#k-model').value.trim() });
+      await api('/settings/gemini', 'PUT', { apiKey: $('#k-key').value.trim(), model: $('#k-model').value.trim() });
       toast('保存しました'); pageSettings();
     } catch (err) { toast(err.message); }
   };
   const del = $('#k-del');
-  if (del) del.onclick = async () => { await api('/settings/openai', 'DELETE'); toast('削除しました'); pageSettings(); };
+  if (del) del.onclick = async () => { await api('/settings/gemini', 'DELETE'); toast('削除しました'); pageSettings(); };
 }
 
 // ---------- 起動 ----------
